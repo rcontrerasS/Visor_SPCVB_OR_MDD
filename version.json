@@ -1,0 +1,7 @@
+{
+  "version": "3.0",
+  "map_mode": "Esri Street/Topo with client-side overzoom",
+  "street_source_max_zoom": 16,
+  "satellite_source_max_zoom": 18,
+  "visual_max_zoom": 19
+}

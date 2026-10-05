@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0f172a">
+<title>Visor SPCVB - Muestra OR Madre de Dios</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Inter,Segoe UI,Arial,sans-serif;background:#dbe2e8;color:#0f172a}
+button,input{font:inherit}
+#map{position:absolute;inset:0;overflow:hidden;background:#dbe2e8;cursor:grab;user-select:none;touch-action:none}
+#map.dragging{cursor:grabbing}
+#tiles,#svgLayer,#markers{position:absolute;inset:0;transform:translate3d(0,0,0)}
+#tiles{z-index:1}
+#svgLayer{z-index:4;pointer-events:none}
+#markers{z-index:7;pointer-events:none}
+.tile{position:absolute;width:256px;height:256px;object-fit:cover;pointer-events:none;user-select:none;border:0}
+
+.marker{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer}
+.supply-pin{
+  width:34px;height:34px;border-radius:50%;border:3px solid #fff;
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:900;
+  box-shadow:0 0 0 2px rgba(15,23,42,.55),0 4px 10px rgba(0,0,0,.28)
+}
+.supply-pin.pm01{background:#2563eb}
+.supply-pin.pm04{background:#7c3aed}
+.supply-pin.pm06{background:#0f766e}
+.supply-pin.selected{box-shadow:0 0 0 4px #f59e0b,0 5px 14px rgba(0,0,0,.34);transform:scale(1.15)}
+.supply-label{
+  position:absolute;left:22px;top:-11px;white-space:nowrap;background:rgba(255,255,255,.96);
+  border:1px solid #cbd5e1;border-radius:6px;padding:2px 5px;font-size:9px;font-weight:800;color:#0f172a;
+  box-shadow:0 2px 5px rgba(0,0,0,.13)
+}
+.me-pin{
+  width:22px;height:22px;border-radius:50%;background:#16a34a;border:4px solid #fff;
+  box-shadow:0 0 0 3px rgba(22,163,74,.32),0 3px 9px rgba(0,0,0,.28)
+}
+.me-label{
+  position:absolute;left:16px;top:-10px;white-space:nowrap;background:#fff;border:2px solid #16a34a;
+  border-radius:6px;padding:2px 5px;font-size:9px;font-weight:900;color:#166534
+}
+
+#topbar{
+  position:absolute;z-index:30;left:14px;top:14px;right:14px;display:flex;gap:8px;align-items:center;pointer-events:none
+}
+.topbtn{
+  pointer-events:auto;border:0;border-radius:11px;background:#fff;box-shadow:0 4px 16px rgba(0,0,0,.2);
+  height:42px;padding:0 12px;font-size:11px;font-weight:800;cursor:pointer;color:#0f172a
+}
+.topbtn.primary{background:#0f172a;color:#fff}
+.topbtn.route{background:#166534;color:#fff}
+.topbtn:disabled{opacity:.5;cursor:not-allowed}
+
+#panel{
+  position:absolute;z-index:35;left:14px;top:66px;bottom:14px;width:410px;max-width:calc(100vw - 28px);
+  background:rgba(255,255,255,.98);border-radius:15px;box-shadow:0 8px 30px rgba(0,0,0,.25);
+  padding:14px;overflow:auto;transition:.2s ease
+}
+#panel.hidden{transform:translateX(calc(-100% - 28px));opacity:0;pointer-events:none}
+.panel-head{display:flex;gap:8px;align-items:flex-start}
+.panel-head h1{margin:0;font-size:18px;line-height:1.15}
+.panel-head .sub{font-size:10px;color:#64748b;margin-top:4px}
+#closePanel{margin-left:auto;border:0;background:#eef2f6;width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:18px}
+#showPanel{
+  position:absolute;z-index:31;left:14px;top:66px;border:0;border-radius:11px;background:#fff;
+  box-shadow:0 4px 16px rgba(0,0,0,.2);height:40px;padding:0 11px;font-weight:800;font-size:11px;cursor:pointer;display:none
+}
+#showPanel.visible{display:block}
+
+.status{
+  margin:10px 0;padding:9px 10px;border-radius:9px;background:#eff6ff;border:1px solid #bfdbfe;
+  font-size:10px;line-height:1.45;color:#1e3a8a
+}
+.status.ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
+.status.warn{background:#fff7ed;border-color:#fed7aa;color:#9a3412}
+.search{width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:9px 10px;font-size:11px;outline:none;margin-bottom:8px}
+.search:focus{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.12)}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:9px;color:#475569;margin:7px 0 10px}
+.legend span{display:flex;align-items:center;gap:4px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.pm01{background:#2563eb}.pm04{background:#7c3aed}.pm06{background:#0f766e}
+
+.card{
+  width:100%;border:1px solid #e2e8f0;background:#fff;border-radius:11px;padding:9px;margin-bottom:7px;
+  text-align:left;cursor:pointer
+}
+.card:hover{background:#f8fafc}
+.card.selected{border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,.15)}
+.card-top{display:flex;gap:9px;align-items:flex-start}
+.num{
+  width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:11px;font-weight:900;flex:0 0 auto
+}
+.info{min-width:0;flex:1}
+.info b{display:block;font-size:11px;line-height:1.2}
+.info small{display:block;font-size:9px;color:#475569;line-height:1.25;margin-top:2px}
+.meta{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.tag{font-size:8px;background:#f1f5f9;color:#334155;border-radius:5px;padding:2px 5px}
+.actions{display:flex;gap:5px;margin-top:7px}
+.actions button{
+  border:1px solid #cbd5e1;background:#fff;border-radius:7px;padding:5px 7px;font-size:9px;font-weight:800;cursor:pointer
+}
+.actions button.routebtn{background:#166534;border-color:#166534;color:#fff}
+.route-order{
+  margin:8px 0;padding:8px;border:1px dashed #94a3b8;border-radius:9px;background:#f8fafc;
+  font-size:9px;line-height:1.45;color:#334155;display:none
+}
+.route-order.visible{display:block}
+
+.controls{position:absolute;z-index:25;right:14px;top:66px;display:flex;flex-direction:column;gap:8px}
+.control-box{background:#fff;border-radius:11px;box-shadow:0 4px 16px rgba(0,0,0,.2);overflow:hidden}
+.control-btn{width:42px;height:42px;border:0;background:#fff;color:#111827;cursor:pointer;font-size:21px;font-weight:900;display:block}
+.control-btn+.control-btn{border-top:1px solid #e5e7eb}
+.layer-base{
+  position:absolute;z-index:25;right:14px;bottom:16px;background:#fff;border-radius:11px;
+  box-shadow:0 4px 16px rgba(0,0,0,.2);padding:6px;display:flex;gap:5px
+}
+.layer-base button{border:0;border-radius:8px;padding:8px 11px;background:#eef2f6;color:#111827;cursor:pointer;font-size:11px;font-weight:900}
+.layer-base button.active{background:#111827;color:#fff}
+
+#routeChip{
+  position:absolute;z-index:26;left:50%;bottom:18px;transform:translateX(-50%);
+  background:#0f172a;color:#fff;border-radius:12px;padding:8px 12px;font-size:10px;font-weight:700;
+  box-shadow:0 4px 18px rgba(0,0,0,.28);display:none;max-width:80vw;text-align:center
+}
+#routeChip.visible{display:block}
+
+#popup{
+  position:absolute;z-index:40;min-width:270px;max-width:380px;background:#fff;border-radius:12px;
+  box-shadow:0 7px 24px rgba(0,0,0,.3);padding:12px;display:none;pointer-events:auto
+}
+#popup h3{margin:0 0 7px;font-size:14px;padding-right:24px}
+#popup .body{font-size:10px;line-height:1.45;color:#26303d}
+#popup a{display:inline-block;margin-top:8px;background:#0f172a;color:#fff;text-decoration:none;border-radius:7px;padding:6px 8px;font-weight:800}
+#popupClose{position:absolute;right:7px;top:7px;width:27px;height:27px;border:0;border-radius:50%;background:#edf0f3;cursor:pointer}
+
+#loading{
+  position:absolute;z-index:3;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(255,255,255,.94);
+  padding:8px 12px;border-radius:9px;font-size:11px;color:#4b5563;pointer-events:none
+}
+#attr{
+  position:absolute;z-index:20;left:6px;bottom:4px;background:rgba(255,255,255,.84);
+  border-radius:4px;padding:2px 5px;font-size:8px;color:#475569;pointer-events:none
+}
+@media(max-width:760px){
+  #panel{width:calc(100vw - 28px);top:116px;max-height:52vh;bottom:auto}
+  #topbar{flex-wrap:wrap}
+  .topbtn{height:38px;font-size:10px;padding:0 9px}
+  .controls{top:116px}
+  .supply-label{display:none}
+}
+</style>
+</head>
+<body>
+
+<div id="map">
+  <div id="tiles"></div>
+  <svg id="svgLayer"></svg>
+  <div id="markers"></div>
+  <div id="loading">Cargando mapa…</div>
+</div>
+
+<div id="topbar">
+  <button class="topbtn primary" id="locateBtn">📍 Mi ubicación</button>
+  <button class="topbtn route" id="routeSelectedBtn">🧭 Ruta al seleccionado</button>
+  <button class="topbtn" id="routeAllBtn">🗺 Ruta sugerida de muestra</button>
+  <button class="topbtn" id="clearRouteBtn">✕ Limpiar ruta</button>
+</div>
+
+<button id="showPanel">☰ Muestra</button>
+
+<div id="panel">
+  <div class="panel-head">
+    <div>
+      <h1>Muestra SPCVB · OR MDD</h1>
+      <div class="sub">8 suministros provisionales · periodo 202601</div>
+    </div>
+    <button id="closePanel">×</button>
+  </div>
+
+  <div id="status" class="status">
+    Pulsa <b>Mi ubicación</b> y permite el acceso al GPS. En GitHub Pages funcionará por HTTPS. El visor usa <b>overzoom</b> para evitar mapas en blanco o bloqueados al acercarte.
+  </div>
+  <div class="status ok" style="margin-top:-4px">
+    <b>Modo robusto v3:</b> no usa teselas directas de OpenStreetMap. Calles se consulta hasta zoom 16 y se amplía localmente hasta zoom 19.
+  </div>
+
+  <input id="search" class="search" placeholder="Buscar suministro, dirección o razón social…">
+
+  <div class="legend">
+    <span><i class="dot pm01"></i>PM01</span>
+    <span><i class="dot pm04"></i>PM04</span>
+    <span><i class="dot pm06"></i>PM06</span>
+    <span>🟢 Tu ubicación</span>
+  </div>
+
+  <div id="routeOrder" class="route-order"></div>
+  <div id="cards"></div>
+</div>
+
+<div class="controls">
+  <div class="control-box">
+    <button class="control-btn" id="zoomIn">+</button>
+    <button class="control-btn" id="zoomOut">−</button>
+  </div>
+  <div class="control-box">
+    <button class="control-btn" id="homeBtn">⌂</button>
+  </div>
+</div>
+
+<div class="layer-base">
+  <button id="streetBtn" class="active">Calles</button>
+  <button id="satBtn">Satélite</button>
+</div>
+
+<div id="routeChip"></div>
+
+<div id="popup">
+  <button id="popupClose">×</button>
+  <h3 id="popupTitle"></h3>
+  <div class="body" id="popupBody"></div>
+</div>
+
+<div id="attr">Calles / Topográfico © Esri · Satélite © Esri · Ruta vial © OSRM/OpenStreetMap · Coordenadas: KML proporcionado</div>
+
+<script>
+const SUPPLIES = [{"n": 1, "suministro": "12000047839", "razon": "URBANIZACION POPULAR DE INTERES SOCIAL 6 DE SEPTIEMBRE", "direccion": "JOYA: AV. AMISTAD S/N", "ubigeo": "170101", "alimentador": "PM01", "subestacion": "PM011063", "sistema": "SE3034", "lotes": 69, "lat": -12.62718254012541, "lon": -69.21499738551235}, {"n": 2, "suministro": "12000043886", "razon": "URBANIZACION BRISAS DE LA JOYA - URB. BRISAS DE LA JOYA", "direccion": "SECTOR LA JOYA", "ubigeo": "170101", "alimentador": "PM01", "subestacion": "PM011063", "sistema": "SE3034", "lotes": 180, "lat": -12.62732572355158, "lon": -69.21498215808832}, {"n": 3, "suministro": "12000026153", "razon": "URBANIZACIÓN POPULAR DE INTERES SOCIAL VILLA NUEVA", "direccion": "CARRETERA MARGEN IZQUIERDA KM-6.200", "ubigeo": "170101", "alimentador": "PM06", "subestacion": "PM060590", "sistema": "SE0034", "lotes": 239, "lat": -12.595144749504, "lon": -69.22374043242911}, {"n": 4, "suministro": "12000046199", "razon": "BAJADA INFIERNO", "direccion": "CARRETERA CHONTA- INFIERNO KM4", "ubigeo": "170101", "alimentador": "PM01", "subestacion": "PM011063", "sistema": "SE3034", "lotes": 57, "lat": -12.62710951912744, "lon": -69.21494335676877}, {"n": 5, "suministro": "12000050560", "razon": "URBANIZACION POPULAR DE INTERES SOCIAL 22 DE AGOSTO", "direccion": "CARRET. LA JOYA- CHONTA INFIERNO KM 3 MARGEN DERECHA", "ubigeo": "170101", "alimentador": "PM01", "subestacion": "PM011063", "sistema": "SE3034", "lotes": 86, "lat": -12.62722482016324, "lon": -69.21481800218879}, {"n": 6, "suministro": "12000029582", "razon": "URBANIZACIÓN POPULAR DE INTERES SOCIAL LA CAPILLA TAMBOPATA", "direccion": "JOYA: CALLE 24 DE SETIEMBRE F-15", "ubigeo": "170101", "alimentador": "PM01", "subestacion": "PM010579", "sistema": "SE0034", "lotes": 235, "lat": -12.60917093750168, "lon": -69.21278453258704}, {"n": 7, "suministro": "12000051854", "razon": "URBANIZACION POPULAR DE INTERES SOCIAL LAS TRES PÚERTAS DE B", "direccion": "CARRETERA INFIERNO KM 2.5 - UPIS TRES PUERTAS DE BELEN", "ubigeo": "170101", "alimentador": "PM01", "subestacion": "PM011095", "sistema": "SE3034", "lotes": 45, "lat": -12.62080514535103, "lon": -69.21750490593607}, {"n": 8, "suministro": "12000049303", "razon": "ASOCIACION DE VIVIENDA JACINTO Y ANTOLINA", "direccion": "CARRET. PUERTO MALDONADO - CHONTA CCNN-INFIERNO", "ubigeo": "170101", "alimentador": "PM04", "subestacion": "PM040320", "sistema": "SE3034", "lotes": 50, "lat": -12.59456342553407, "lon": -69.17874204192833}];
+
+const map=document.getElementById('map');
+const tiles=document.getElementById('tiles');
+const svg=document.getElementById('svgLayer');
+const markers=document.getElementById('markers');
+const loading=document.getElementById('loading');
+const panel=document.getElementById('panel');
+const showPanel=document.getElementById('showPanel');
+const statusEl=document.getElementById('status');
+const routeChip=document.getElementById('routeChip');
+const routeOrder=document.getElementById('routeOrder');
+const popup=document.getElementById('popup');
+const popupTitle=document.getElementById('popupTitle');
+const popupBody=document.getElementById('popupBody');
+
+const TILE=256;
+let zoom=13;
+let center={lat:-12.612,lon:-69.207};
+let provider='street';
+let drag=null,raf=null,popupObj=null;
+let selected=SUPPLIES[0];
+let myLocation=null;
+let myAccuracy=null;
+let watchId=null;
+let routeCoords=[];
+let routeMeta=null;
+let routeMode='';
+let firstLocationFix=true;
+
+function feederClass(a){return (a||'').toLowerCase()}
+function esc(t){return String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function project(lat,lon,z){
+  const scale=TILE*Math.pow(2,z);
+  const x=(lon+180)/360*scale;
+  const sin=Math.sin(lat*Math.PI/180);
+  const y=(0.5-Math.log((1+sin)/(1-sin))/(4*Math.PI))*scale;
+  return {x,y};
+}
+function unproject(x,y,z){
+  const scale=TILE*Math.pow(2,z);
+  const lon=x/scale*360-180;
+  const n=Math.PI-2*Math.PI*y/scale;
+  const lat=180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n)));
+  return {lat,lon};
+}
+function tileURL(sourceZ,x,y,kind='primary'){
+  const n=Math.pow(2,sourceZ);
+  x=((x%n)+n)%n;
+  if(provider==='sat'){
+    return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${sourceZ}/${y}/${x}`;
+  }
+  if(kind==='fallback'){
+    return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${sourceZ}/${y}/${x}`;
+  }
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${sourceZ}/${y}/${x}`;
+}
+function scheduleRender(){if(raf)cancelAnimationFrame(raf);raf=requestAnimationFrame(render)}
+
+function render(){
+  raf=null;
+  const rect=map.getBoundingClientRect(),w=rect.width,h=rect.height;
+  const c=project(center.lat,center.lon,zoom);
+  const left=c.x-w/2,top=c.y-h/2,right=c.x+w/2,bottom=c.y+h/2;
+  const minTX=Math.floor(left/TILE)-1,maxTX=Math.floor(right/TILE)+1;
+  const minTY=Math.floor(top/TILE)-1,maxTY=Math.floor(bottom/TILE)+1;
+  const n=Math.pow(2,zoom);
+
+  tiles.innerHTML='';
+
+  // OVERZOOM ROBUSTO:
+  // No pedimos al servidor niveles que puedan no existir para Puerto Maldonado.
+  // En Calles se usa hasta z=16 y se amplía localmente a z=17..19.
+  // En Satélite se usa hasta z=18 y se amplía localmente a z=19.
+  const sourceMaxZoom = provider==='sat' ? 18 : 16;
+  const sourceZ = Math.min(zoom, sourceMaxZoom);
+  const overFactor = Math.pow(2, zoom-sourceZ);
+  const displayTileSize = TILE*overFactor;
+  const sourceN = Math.pow(2,sourceZ);
+
+  const minSTX=Math.floor(left/displayTileSize)-1;
+  const maxSTX=Math.floor(right/displayTileSize)+1;
+  const minSTY=Math.floor(top/displayTileSize)-1;
+  const maxSTY=Math.floor(bottom/displayTileSize)+1;
+
+  for(let sy=minSTY;sy<=maxSTY;sy++){
+    if(sy<0||sy>=sourceN)continue;
+    for(let sx=minSTX;sx<=maxSTX;sx++){
+      const wrappedX=((sx%sourceN)+sourceN)%sourceN;
+      const img=document.createElement('img');
+      img.className='tile';img.draggable=false;
+      img.style.left=(sx*displayTileSize-left)+'px';
+      img.style.top=(sy*displayTileSize-top)+'px';
+      img.style.width=displayTileSize+'px';
+      img.style.height=displayTileSize+'px';
+      img.style.imageRendering='auto';
+      img.src=tileURL(sourceZ,wrappedX,sy,'primary');
+      img.onload=()=>loading.style.display='none';
+      img.onerror=()=>{
+        if(provider==='street' && !img.dataset.fallback){
+          img.dataset.fallback='1';
+          img.src=tileURL(sourceZ,wrappedX,sy,'fallback');
+        } else {
+          img.style.display='none';
+          loading.style.display='none';
+        }
+      };
+      tiles.appendChild(img);
+    }
+  }
+
+  svg.innerHTML='';
+  svg.setAttribute('width',w);svg.setAttribute('height',h);
+
+  // Precisión GPS
+  if(myLocation && myAccuracy){
+    const p=project(myLocation.lat,myLocation.lon,zoom);
+    const mpp=156543.03392*Math.cos(myLocation.lat*Math.PI/180)/Math.pow(2,zoom);
+    const circle=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    circle.setAttribute('cx',p.x-left);circle.setAttribute('cy',p.y-top);circle.setAttribute('r',Math.max(3,myAccuracy/mpp));
+    circle.setAttribute('fill','#22c55e');circle.setAttribute('fill-opacity','.08');
+    circle.setAttribute('stroke','#16a34a');circle.setAttribute('stroke-opacity','.35');
+    circle.setAttribute('stroke-width','1.5');svg.appendChild(circle);
+  }
+
+  // Ruta
+  if(routeCoords.length>1){
+    let d='';
+    routeCoords.forEach((p,i)=>{
+      const q=project(p[1],p[0],zoom);
+      d+=(i===0?'M':'L')+(q.x-left)+' '+(q.y-top)+' ';
+    });
+    const halo=document.createElementNS('http://www.w3.org/2000/svg','path');
+    halo.setAttribute('d',d);halo.setAttribute('fill','none');halo.setAttribute('stroke','#fff');
+    halo.setAttribute('stroke-width','8');halo.setAttribute('stroke-linecap','round');halo.setAttribute('stroke-linejoin','round');
+    halo.setAttribute('opacity','.88');svg.appendChild(halo);
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',d);path.setAttribute('fill','none');
+    path.setAttribute('stroke',routeMode==='fallback'?'#f59e0b':'#16a34a');
+    path.setAttribute('stroke-width','5');path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');
+    if(routeMode==='fallback')path.setAttribute('stroke-dasharray','9 7');
+    svg.appendChild(path);
+  }
+
+  markers.innerHTML='';
+
+  function addMarker(lat,lon,content,click,title){
+    const p=project(lat,lon,zoom),mx=p.x-left,my=p.y-top;
+    const el=document.createElement('div');
+    el.className='marker';el.style.left=mx+'px';el.style.top=my+'px';el.innerHTML=content;
+    if(title)el.title=title;
+    el.addEventListener('pointerdown',e=>e.stopPropagation());
+    el.addEventListener('click',e=>{e.stopPropagation();click(mx,my)});
+    markers.appendChild(el);
+  }
+
+  SUPPLIES.forEach(s=>{
+    const isSel=selected && selected.suministro===s.suministro;
+    const label=(zoom>=15 || isSel)?`<div class="supply-label">${s.n}. ${s.suministro}</div>`:'';
+    addMarker(s.lat,s.lon,
+      `<div class="supply-pin ${feederClass(s.alimentador)} ${isSel?'selected':''}">${s.n}</div>${label}`,
+      (x,y)=>{selectSupply(s);openSupply(s,x,y)},
+      `${s.suministro} · ${s.direccion}`);
+  });
+
+  if(myLocation){
+    addMarker(myLocation.lat,myLocation.lon,
+      `<div class="me-pin"></div><div class="me-label">Mi ubicación</div>`,
+      (x,y)=>openMe(x,y),'Mi ubicación');
+  }
+
+  if(popupObj)repositionPopup();
+}
+
+function popupAt(x,y){
+  const rect=map.getBoundingClientRect();
+  let px=x+25,py=y-90;
+  const pw=popup.offsetWidth||345,ph=popup.offsetHeight||180;
+  if(px+pw>rect.width-10)px=x-pw-25;
+  if(py<10)py=y+25;
+  if(py+ph>rect.height-10)py=rect.height-ph-10;
+  popup.style.left=px+'px';popup.style.top=py+'px';
+}
+function repositionPopup(){
+  const rect=map.getBoundingClientRect(),c=project(center.lat,center.lon,zoom);
+  const left=c.x-rect.width/2,top=c.y-rect.height/2,p=project(popupObj.lat,popupObj.lon,zoom);
+  popupAt(p.x-left,p.y-top);
+}
+function showPopup(title,body,lat,lon,x,y){
+  popupObj={lat,lon};popupTitle.textContent=title;popupBody.innerHTML=body;popup.style.display='block';popupAt(x,y);
+}
+function closePopup(){popupObj=null;popup.style.display='none'}
+
+function googleMapsURL(s){
+  if(myLocation){
+    return `https://www.google.com/maps/dir/?api=1&origin=${myLocation.lat},${myLocation.lon}&destination=${s.lat},${s.lon}&travelmode=driving`;
+  }
+  return `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}&travelmode=driving`;
+}
+function openSupply(s,x,y){
+  showPopup('Suministro '+s.suministro,
+    `<b>${esc(s.razon)}</b><br>`+
+    `<b>Dirección:</b> ${esc(s.direccion)}<br>`+
+    `<b>Alimentador:</b> ${esc(s.alimentador)} · <b>Subestación:</b> ${esc(s.subestacion)}<br>`+
+    `<b>Lotes:</b> ${s.lotes} · <b>Sistema:</b> ${esc(s.sistema)}<br>`+
+    `<b>Coordenadas:</b> ${s.lat.toFixed(7)}, ${s.lon.toFixed(7)}<br>`+
+    `<a target="_blank" href="${googleMapsURL(s)}">Abrir navegación en Google Maps</a>`,
+    s.lat,s.lon,x,y);
+}
+function openMe(x,y){
+  showPopup('Mi ubicación',
+    `<b>Latitud:</b> ${myLocation.lat.toFixed(7)}<br>`+
+    `<b>Longitud:</b> ${myLocation.lon.toFixed(7)}<br>`+
+    `<b>Precisión:</b> ${myAccuracy?Math.round(myAccuracy)+' m':'—'}`,
+    myLocation.lat,myLocation.lon,x,y);
+}
+
+function renderCards(filter=''){
+  const q=filter.trim().toLowerCase();
+  const list=SUPPLIES.filter(s=>
+    !q || s.suministro.toLowerCase().includes(q) || s.razon.toLowerCase().includes(q) ||
+    s.direccion.toLowerCase().includes(q) || s.alimentador.toLowerCase().includes(q) ||
+    s.subestacion.toLowerCase().includes(q)
+  );
+  document.getElementById('cards').innerHTML=list.map(s=>`
+    <div class="card ${selected&&selected.suministro===s.suministro?'selected':''}" data-code="${s.suministro}">
+      <div class="card-top" onclick="selectAndFocus('${s.suministro}')">
+        <span class="num ${feederClass(s.alimentador)}">${s.n}</span>
+        <span class="info">
+          <b>${s.suministro}</b>
+          <small>${esc(s.razon)}</small>
+          <small>${esc(s.direccion)}</small>
+          <span class="meta">
+            <span class="tag">${esc(s.alimentador)}</span>
+            <span class="tag">${esc(s.subestacion)}</span>
+            <span class="tag">${s.lotes} lotes</span>
+          </span>
+        </span>
+      </div>
+      <div class="actions">
+        <button onclick="event.stopPropagation();selectAndFocus('${s.suministro}')">Centrar</button>
+        <button class="routebtn" onclick="event.stopPropagation();routeToCode('${s.suministro}')">Ruta</button>
+        <button onclick="event.stopPropagation();openGoogle('${s.suministro}')">Google Maps</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function selectSupply(s){
+  selected=s;renderCards(document.getElementById('search').value);scheduleRender();
+}
+function selectAndFocus(code){
+  const s=SUPPLIES.find(x=>x.suministro===code);if(!s)return;
+  selectSupply(s);zoom=17;center={lat:s.lat,lon:s.lon};panel.classList.add('hidden');showPanel.classList.add('visible');scheduleRender();
+  setTimeout(()=>{const r=map.getBoundingClientRect();openSupply(s,r.width/2,r.height/2)},100);
+}
+function focusAll(){
+  const pts=[...SUPPLIES.map(s=>({lat:s.lat,lon:s.lon}))];
+  if(myLocation)pts.push(myLocation);
+  fitPoints(pts,70);
+}
+function fitPoints(points,pad=70){
+  if(!points.length)return;
+  const rect=map.getBoundingClientRect();
+  for(let z=19;z>=11;z--){
+    const ps=points.map(p=>project(p.lat,p.lon,z));
+    const xs=ps.map(p=>p.x),ys=ps.map(p=>p.y);
+    const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+    if(maxX-minX<=rect.width-pad*2 && maxY-minY<=rect.height-pad*2){
+      zoom=z;center=unproject((minX+maxX)/2,(minY+maxY)/2,z);scheduleRender();return;
+    }
+  }
+}
+
+function locateMe(){
+  if(location.protocol==='file:'){
+    setStatus('Estás abriendo el archivo localmente. El GPS puede estar bloqueado. Para usar Mi ubicación, publícalo en GitHub Pages (HTTPS).','warn');
+  }
+  if(!navigator.geolocation){
+    setStatus('Este navegador no admite geolocalización.','warn');return;
+  }
+  setStatus('Solicitando ubicación GPS…','');
+  if(watchId!==null)navigator.geolocation.clearWatch(watchId);
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    myLocation={lat:pos.coords.latitude,lon:pos.coords.longitude};
+    myAccuracy=pos.coords.accuracy;
+    setStatus(`Ubicación activa · precisión aprox. ${Math.round(myAccuracy)} m`,'ok');
+    if(firstLocationFix){
+      firstLocationFix=false;
+      center={...myLocation};zoom=16;
+    }
+    scheduleRender();
+  },err=>{
+    let msg='No se pudo obtener la ubicación.';
+    if(err.code===1)msg='Permiso de ubicación denegado. Habilítalo en el navegador.';
+    if(err.code===2)msg='Ubicación no disponible en este momento.';
+    if(err.code===3)msg='Tiempo de espera agotado al obtener la ubicación.';
+    setStatus(msg,'warn');
+  },{enableHighAccuracy:true,maximumAge:4000,timeout:15000});
+}
+function setStatus(msg,type=''){
+  statusEl.className='status'+(type?' '+type:'');statusEl.innerHTML=msg;
+}
+
+function hav(a,b){
+  const R=6371008.8,toRad=x=>x*Math.PI/180;
+  const p1=toRad(a.lat),p2=toRad(b.lat),dp=toRad(b.lat-a.lat),dl=toRad(b.lon-a.lon);
+  const x=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+  return 2*R*Math.asin(Math.sqrt(x));
+}
+function greedyOrder(start, supplies){
+  const pending=[...supplies],out=[];let cur=start;
+  while(pending.length){
+    let bi=0,bd=Infinity;
+    pending.forEach((s,i)=>{const d=hav(cur,s);if(d<bd){bd=d;bi=i}});
+    const s=pending.splice(bi,1)[0];out.push(s);cur=s;
+  }
+  return out;
+}
+async function fetchRoute(points){
+  const coords=points.map(p=>`${p.lon},${p.lat}`).join(';');
+  const url=`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`;
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const res=await fetch(url,{signal:ctrl.signal});
+    if(!res.ok)throw new Error('OSRM '+res.status);
+    const obj=await res.json();
+    if(obj.code!=='Ok'||!obj.routes||!obj.routes.length)throw new Error(obj.code||'Sin ruta');
+    return obj.routes[0];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function routeFallback(points,label){
+  routeCoords=points.map(p=>[p.lon,p.lat]);routeMode='fallback';routeMeta=null;
+  routeChip.textContent='No se pudo calcular la ruta vial. Se muestra una línea directa de referencia.';
+  routeChip.classList.add('visible');
+  fitPoints(points.map(p=>({lat:p.lat,lon:p.lon})),70);scheduleRender();
+  setStatus(label+' · ruta vial no disponible; usa Google Maps para navegación.','warn');
+}
+async function routeTo(s){
+  if(!myLocation){setStatus('Primero pulsa Mi ubicación y permite el GPS.','warn');locateMe();return}
+  selectSupply(s);
+  setStatus('Calculando ruta vial…','');
+  routeOrder.classList.remove('visible');
+  try{
+    const r=await fetchRoute([myLocation,s]);
+    routeCoords=r.geometry.coordinates;routeMode='road';routeMeta=r;
+    const km=(r.distance/1000).toFixed(1),mins=Math.round(r.duration/60);
+    routeChip.textContent=`Ruta a ${s.suministro}: ${km} km · ${mins} min aprox.`;
+    routeChip.classList.add('visible');
+    setStatus(`Ruta calculada a <b>${s.suministro}</b>: ${km} km · ${mins} min aprox.`,'ok');
+    const pts=routeCoords.map(c=>({lat:c[1],lon:c[0]}));fitPoints(pts,60);scheduleRender();
+  }catch(e){
+    routeFallback([myLocation,s],`Suministro ${s.suministro}`);
+  }
+}
+async function routeAll(){
+  if(!myLocation){setStatus('Primero pulsa Mi ubicación y permite el GPS.','warn');locateMe();return}
+  const order=greedyOrder(myLocation,SUPPLIES);
+  setStatus('Calculando ruta sugerida para los 8 suministros…','');
+  routeOrder.innerHTML='<b>Orden sugerido por proximidad desde tu ubicación:</b><br>'+order.map((s,i)=>`${i+1}. ${s.suministro} — ${esc(s.direccion)}`).join('<br>');
+  routeOrder.classList.add('visible');
+  try{
+    const r=await fetchRoute([myLocation,...order]);
+    routeCoords=r.geometry.coordinates;routeMode='road';routeMeta=r;
+    const km=(r.distance/1000).toFixed(1),mins=Math.round(r.duration/60);
+    routeChip.textContent=`Ruta de muestra: ${km} km · ${mins} min aprox. · 8 suministros`;
+    routeChip.classList.add('visible');
+    setStatus(`Ruta sugerida calculada: <b>${km} km</b> · <b>${mins} min</b> aprox. El orden se basa en cercanía; la línea vial se calcula con OSRM.`,'ok');
+    fitPoints(routeCoords.map(c=>({lat:c[1],lon:c[0]})),60);scheduleRender();
+  }catch(e){
+    routeFallback([myLocation,...order],'Ruta de muestra');
+  }
+}
+function clearRoute(){
+  routeCoords=[];routeMeta=null;routeMode='';routeChip.classList.remove('visible');routeOrder.classList.remove('visible');
+  scheduleRender();setStatus(myLocation?'Ubicación activa. Selecciona un suministro o calcula la ruta de muestra.':'Pulsa Mi ubicación y permite el acceso al GPS.','');
+}
+function openGoogle(code){
+  const s=SUPPLIES.find(x=>x.suministro===code);if(!s)return;
+  window.open(googleMapsURL(s),'_blank');
+}
+function routeToCode(code){
+  const s=SUPPLIES.find(x=>x.suministro===code);if(s)routeTo(s);
+}
+
+function zoomAt(newZoom,cx,cy){
+  newZoom=clamp(newZoom,11,19);if(newZoom===zoom)return;
+  const rect=map.getBoundingClientRect(),oldC=project(center.lat,center.lon,zoom);
+  const wx=oldC.x+(cx-rect.left-rect.width/2),wy=oldC.y+(cy-rect.top-rect.height/2);
+  const ll=unproject(wx,wy,zoom);zoom=newZoom;
+  const np=project(ll.lat,ll.lon,zoom);
+  center=unproject(np.x-(cx-rect.left-rect.width/2),np.y-(cy-rect.top-rect.height/2),zoom);scheduleRender();
+}
+map.addEventListener('wheel',e=>{e.preventDefault();zoomAt(zoom+(e.deltaY<0?1:-1),e.clientX,e.clientY)},{passive:false});
+map.addEventListener('dblclick',e=>{e.preventDefault();zoomAt(zoom+1,e.clientX,e.clientY)});
+map.addEventListener('pointerdown',e=>{
+  if(e.button!==0)return;closePopup();map.setPointerCapture(e.pointerId);
+  const c=project(center.lat,center.lon,zoom);
+  drag={id:e.pointerId,sx:e.clientX,sy:e.clientY,cx:c.x,cy:c.y,dx:0,dy:0};map.classList.add('dragging');
+});
+map.addEventListener('pointermove',e=>{
+  if(!drag||e.pointerId!==drag.id)return;
+  drag.dx=e.clientX-drag.sx;drag.dy=e.clientY-drag.sy;
+  tiles.style.transform=`translate3d(${drag.dx}px,${drag.dy}px,0)`;
+  svg.style.transform=`translate3d(${drag.dx}px,${drag.dy}px,0)`;
+  markers.style.transform=`translate3d(${drag.dx}px,${drag.dy}px,0)`;
+});
+function endDrag(e){
+  if(!drag||e.pointerId!==drag.id)return;
+  center=unproject(drag.cx-drag.dx,drag.cy-drag.dy,zoom);drag=null;
+  tiles.style.transform='translate3d(0,0,0)';svg.style.transform='translate3d(0,0,0)';markers.style.transform='translate3d(0,0,0)';
+  map.classList.remove('dragging');scheduleRender();
+}
+map.addEventListener('pointerup',endDrag);map.addEventListener('pointercancel',endDrag);
+
+document.getElementById('locateBtn').onclick=locateMe;
+document.getElementById('routeSelectedBtn').onclick=()=>routeTo(selected);
+document.getElementById('routeAllBtn').onclick=routeAll;
+document.getElementById('clearRouteBtn').onclick=clearRoute;
+document.getElementById('zoomIn').onclick=()=>zoomAt(zoom+1,innerWidth/2,innerHeight/2);
+document.getElementById('zoomOut').onclick=()=>zoomAt(zoom-1,innerWidth/2,innerHeight/2);
+document.getElementById('homeBtn').onclick=focusAll;
+document.getElementById('popupClose').onclick=closePopup;
+document.getElementById('closePanel').onclick=()=>{panel.classList.add('hidden');showPanel.classList.add('visible')};
+showPanel.onclick=()=>{panel.classList.remove('hidden');showPanel.classList.remove('visible')};
+document.getElementById('search').oninput=e=>renderCards(e.target.value);
+
+document.getElementById('streetBtn').onclick=()=>{
+  provider='street';document.getElementById('streetBtn').classList.add('active');document.getElementById('satBtn').classList.remove('active');
+  loading.style.display='block';loading.textContent='Cargando calles…';scheduleRender();
+};
+document.getElementById('satBtn').onclick=()=>{
+  provider='sat';document.getElementById('satBtn').classList.add('active');document.getElementById('streetBtn').classList.remove('active');
+  loading.style.display='block';loading.textContent='Cargando satélite…';scheduleRender();
+};
+window.addEventListener('resize',scheduleRender);
+
+renderCards();
+focusAll();
+</script>
+</body>
+</html>
